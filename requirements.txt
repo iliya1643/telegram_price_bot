@@ -1,2 +1,2 @@
 Flask==3.0.0
-python-telegram-bot[webhooks]==20.6
+python-telegram-bot[ext,webhooks]>=21.0.0
