@@ -9,7 +9,7 @@ BOT_TOKEN = "8343780728:AAHATAOgDochgcHuhLKDb5ZR6sXZ17cnioM"
 RENDER_URL = "https://telegram-price-bot-knms.onrender.com"  # your Render app URL
 WEBHOOK_PATH = f"/{BOT_TOKEN}"
 FULL_WEBHOOK_URL = RENDER_URL.rstrip("/") + WEBHOOK_PATH
-PORT = int(os.environ.get("PORT", 8080))
+PORT = int(os.environ.get("PORT", 10000))
 
 flask_app = Flask(__name__)
 
