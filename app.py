@@ -4,7 +4,7 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-BOT_TOKEN = "YOUR_REAL_BOT_TOKEN"
+BOT_TOKEN = "8343780728:AAHATAOgDochgcHuhLKDb5ZR6sXZ17cnioM"
 WEBHOOK_PATH = f"/{BOT_TOKEN}"
 PORT = 8000  
 
