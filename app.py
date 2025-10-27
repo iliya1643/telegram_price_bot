@@ -15,8 +15,8 @@ RENDER_URL = os.environ.get("RENDER_URL", "https://telegram-price-bot-knms.onren
 WEBHOOK_PATH = f"/{BOT_TOKEN}"
 FULL_WEBHOOK_URL = RENDER_URL.rstrip("/") + WEBHOOK_PATH
 PORT = int(os.environ.get("PORT", "10000"))
-flag=False
-
+stop_requested = False
+ws_lock = asyncio.Lock()
 # ───── FLASK ─────
 flask_app = Flask(__name__)
 
@@ -35,27 +35,29 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Safely stop ping task, close websocket connection and cancel listener task.
     Runs inside application.loop so 'await' is allowed.
     """
-    global ping_task, bitpin_task, _ws
+    global ping_task, bitpin_task, _ws,stop_requested
+    stop_requested
     replies = []
 
     # 1) send unsubscribe on existing connection (if supported)
-    if _ws is not None:
-        try:
+    async with ws_lock:
+        if _ws is not None:
             try:
-                await _ws.send(json.dumps({"method": "unsub_tickers"}))
-                replies.append("Unsubscribe message sent.")
+                try:
+                    await _ws.send(json.dumps({"method": "unsub_tickers"}))
+                    replies.append("Unsubscribe message sent.")
+                except Exception as e:
+                    replies.append(f"Couldn't send unsubscribe: {e}")
+    
+                if not _ws.closed:
+                    await _ws.close()
+                    replies.append("WebSocket closed.")
             except Exception as e:
-                replies.append(f"Couldn't send unsubscribe: {e}")
-
-            if not _ws.closed:
-                await _ws.close()
-                replies.append("WebSocket closed.")
-        except Exception as e:
-            replies.append(f"Error while closing WebSocket: {e}")
-        finally:
-            _ws = None
-    else:
-        replies.append("No active WebSocket connection found.")
+                replies.append(f"Error while closing WebSocket: {e}")
+            finally:
+                _ws = None
+        else:
+            replies.append("No active WebSocket connection found.")
 
     # 2) cancel ping_task
     if ping_task:
@@ -86,12 +88,15 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         replies.append("No BitPin listener task.")
 
     await update.message.reply_text("\n".join(replies))
-    flag=False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user.first_name if update.effective_user else "there"
-    await update.message.reply_text(f"Hello {user}! Async bot + WebSocket are running 🚀")
-    flag=True
+    global bitpin_task, stop_requested
+    stop_requested = False
+    if not (bitpin_task and not bitpin_task.done()):
+        bitpin_task = asyncio.create_task(bitpin_listener())
+        await update.message.reply_text("BitPin listener started.")
+    else:
+        await update.message.reply_text("Already running.")
 
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("stop", stop))
@@ -110,38 +115,40 @@ async def bitpin_listener():
     """Connect to BitPin websocket and listen for updates."""
     global ping_task, bitpin_task, _ws
     loop = asyncio.get_running_loop()
-
     while True:
+        if stop_requested :
+            break
         try:
             async with websockets.connect(BITPIN_URL, ping_interval=None) as ws:
                 print("✅ Connected to BitPin")
-                _ws = ws
-
-                # Subscribe
-                sub_msg = {"method": "sub_to_tickers"}
-                await ws.send(json.dumps(sub_msg))
-                print("✅ Subscribed to BitPin tickers")
-
-                last_pong = loop.time()
-
-                async def ping_loop():
-                    nonlocal last_pong
-                    try:
-                        while True:
-                            await ws.send(json.dumps({"message": "PING"}))
-                            # print("📡 PING sent")
-                            await asyncio.sleep(20)
-                            if loop.time() - last_pong > 40:
-                                print("⚠️ No PONG received, reconnecting...")
-                                try:
-                                    await ws.close()
-                                except Exception:
-                                    pass
-                                break
-                    except asyncio.CancelledError:
-                        # ping task cancelled
-                        raise
-
+                async with ws_lock:
+                    _ws = ws
+    
+                    # Subscribe
+                    sub_msg = {"method": "sub_to_tickers"}
+                    await ws.send(json.dumps(sub_msg))
+                    print("✅ Subscribed to BitPin tickers")
+    
+                    last_pong = loop.time()
+    
+                    async def ping_loop():
+                        nonlocal last_pong
+                        try:
+                            while True:
+                                await ws.send(json.dumps({"message": "PING"}))
+                                # print("📡 PING sent")
+                                await asyncio.sleep(20)
+                                if loop.time() - last_pong > 40:
+                                    print("⚠️ No PONG received, reconnecting...")
+                                    try:
+                                        await ws.close()
+                                    except Exception:
+                                        pass
+                                    break
+                        except asyncio.CancelledError:
+                            # ping task cancelled
+                            raise
+    
                 # create and keep global handle
                 ping_task = asyncio.create_task(ping_loop())
 
@@ -171,15 +178,19 @@ async def bitpin_listener():
                         await ping_task
                     except asyncio.CancelledError:
                         pass
-                    ping_task = None
+                ping_task = None
+                print("ping_pong has been ended")
 
-                _ws = None
+                async with ws_lock:
+                    _ws = None
 
         except asyncio.CancelledError:
             print("bitpin_listener cancelled")
             break
         except Exception as e:
             print(" WebSocket error, reconnecting in 5s:", e)
+            if stop_requested:
+                break
             # cleanup ping_task if any
             if ping_task and not ping_task.done():
                 ping_task.cancel()
@@ -252,11 +263,8 @@ async def telegram_bitpin_starter():
 def sync_starter():
     asyncio.run(telegram_bitpin_starter())
 
-if flag :
-    if __name__ == "__main__":
-        print("🚀 Starting Async Telegram + BitPin bot on Render...")
-        Thread(target=sync_starter, daemon=True).start()
-        flask_app.run(host="0.0.0.0", port=PORT)
-else :
-    print("bot has not started yet")
+if __name__ == "__main__":
+    print("🚀 Starting Async Telegram + BitPin bot on Render...")
+    Thread(target=sync_starter, daemon=True).start()
+    flask_app.run(host="0.0.0.0", port=PORT)
     
