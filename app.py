@@ -37,7 +37,7 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     await application.bot.send_message(chat_id=CHAT_ID, text="stoping")
     global ping_task, bitpin_task, _ws,stop_requested
-    stop_requested
+    stop_requested = True
     replies = []
 
     # 1) send unsubscribe on existing connection (if supported)
