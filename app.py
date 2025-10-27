@@ -15,6 +15,7 @@ RENDER_URL = os.environ.get("RENDER_URL", "https://telegram-price-bot-knms.onren
 WEBHOOK_PATH = f"/{BOT_TOKEN}"
 FULL_WEBHOOK_URL = RENDER_URL.rstrip("/") + WEBHOOK_PATH
 PORT = int(os.environ.get("PORT", "10000"))
+flag=False
 
 # ───── FLASK ─────
 flask_app = Flask(__name__)
@@ -85,11 +86,12 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         replies.append("No BitPin listener task.")
 
     await update.message.reply_text("\n".join(replies))
-
+    flag=False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.first_name if update.effective_user else "there"
     await update.message.reply_text(f"Hello {user}! Async bot + WebSocket are running 🚀")
+    flag=True
 
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("stop", stop))
@@ -156,10 +158,10 @@ async def bitpin_listener():
                         continue
 
                     # defensive price access: try BTC_IRT then USDT_IRT
-                    ticker = data.get("BTC_IRT") or data.get("USDT_IRT") or {}
+                    ticker = data.get("ETH_IRT") or {}
                     price = ticker.get("price")
                     if price:
-                        print("Price:", price)
+                        print("ETC Price:", price)
                         await send_price(price)
 
                 # if loop exits, ws closed — ensure ping_task cancelled
@@ -177,7 +179,7 @@ async def bitpin_listener():
             print("bitpin_listener cancelled")
             break
         except Exception as e:
-            print("🔴 WebSocket error, reconnecting in 5s:", e)
+            print(" WebSocket error, reconnecting in 5s:", e)
             # cleanup ping_task if any
             if ping_task and not ping_task.done():
                 ping_task.cancel()
@@ -250,8 +252,11 @@ async def telegram_bitpin_starter():
 def sync_starter():
     asyncio.run(telegram_bitpin_starter())
 
-
-if __name__ == "__main__":
-    print("🚀 Starting Async Telegram + BitPin bot on Render...")
-    Thread(target=sync_starter, daemon=True).start()
-    flask_app.run(host="0.0.0.0", port=PORT)
+if flag :
+    if __name__ == "__main__":
+        print("🚀 Starting Async Telegram + BitPin bot on Render...")
+        Thread(target=sync_starter, daemon=True).start()
+        flask_app.run(host="0.0.0.0", port=PORT)
+else :
+    print("bot has not started yet")
+    
