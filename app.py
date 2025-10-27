@@ -35,6 +35,7 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Safely stop ping task, close websocket connection and cancel listener task.
     Runs inside application.loop so 'await' is allowed.
     """
+    await application.bot.send_message(chat_id=CHAT_ID, text="stoping")
     global ping_task, bitpin_task, _ws,stop_requested
     stop_requested
     replies = []
@@ -86,7 +87,7 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bitpin_task = None
     else:
         replies.append("No BitPin listener task.")
-
+    await application.bot.send_message(chat_id=CHAT_ID, text="stoped")
     await update.message.reply_text("\n".join(replies))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -106,7 +107,7 @@ application.add_handler(CommandHandler("stop", stop))
 async def send_price(price):
     """Send price to Telegram chat."""
     try:
-        await application.bot.send_message(chat_id=CHAT_ID, text=f"💰 Current price: {price}")
+        await application.bot.send_message(chat_id=CHAT_ID, text=f"💰 Current price of ETH : {price}")
     except Exception as e:
         print("Failed to send telegram message:", e)
 
